@@ -1,7 +1,7 @@
 // Holdfast — data tables. Balance lives here: edit numbers, not code.
-export const APP_VERSION = 'holdfast-1';
+export const APP_VERSION = 'holdfast-2';
 export const SAVE_KEY = 'holdfast_save';
-export const SAVE_SCHEMA = 1;
+export const SAVE_SCHEMA = 2;
 
 // Logical playfield (all game coordinates use this space)
 export const WORLD = { w: 400, h: 640, roadWidth: 36 };
@@ -146,6 +146,31 @@ export const MAPS = [
     path: [[430,100],[90,100],[90,220],[310,220],[310,340],[90,340],[90,470],[310,470],[310,600],[200,600],[200,670]],
     spots: [[308,156],[34,158],[204,170],[366,262],[260,270],[116,290],[196,290],[140,390],[308,414],[236,420],[34,446],[132,526],[196,526],[260,552],[366,568]] },
 ];
+// Tutorial map — not part of the campaign list. Hand-authored waves.
+export const TUTORIAL_MAP = { id: 'training', name: 'Training Grounds', biome: 'meadow', tier: 'short', waves: 5, startGold: 300, hpMult: 1, budgetMult: 1, tutorial: true,
+  intro: { goblin: 1, orc: 2, bat: 3, brute: 4 },
+  path: [[200,-30],[200,170],[100,170],[100,360],[300,360],[300,520],[200,520],[200,670]],
+  spots: [[270,120],[150,250],[250,300],[40,300],[200,430],[360,440]],
+  waveList: [
+    [{ type: 'goblin', count: 6, gap: 0.9 }],
+    [{ type: 'goblin', count: 8, gap: 0.6 }, { type: 'orc', count: 2, gap: 1.2 }],
+    [{ type: 'bat', count: 6, gap: 0.8 }, { type: 'goblin', count: 4, gap: 0.6 }],
+    [{ type: 'orc', count: 4, gap: 1 }, { type: 'brute', count: 2, gap: 1.8 }],
+    [{ type: 'goblin', count: 10, gap: 0.45 }, { type: 'orc', count: 4, gap: 0.9 }, { type: 'brute', count: 2, gap: 1.6 }],
+  ] };
+export const TUTORIAL_XP = 60;
+// Counter tips shown on the first-sighting card
+export const ENEMY_TIPS = {
+  goblin: 'Cheap and fast. Archers and Bombards mow them down.',
+  orc: 'Your everyday foe. Anything works — upgrade to keep up.',
+  brute: 'Heavy armor blocks most physical damage. Use Mages.',
+  wraith: 'Shrugs off magic. Use Archers, Bombards or Ballistas.',
+  bat: 'Flies over soldiers and dodges Bombard shells. Use Archers, Mages, Frost or Ballistas.',
+  shaman: 'Heals everything nearby. Set a tower to Strongest or focus it first.',
+  ogre: 'The boss. Huge health — Giantslayer skill and Dragonbane Ballistas help. Leaks cost 5 hearts.',
+};
+export const SPEEDS = [1, 2, 3];
+
 export const TIER_INFO = {
   short:  { label: 'Short',  letter: 'S', winXp: 40 },
   medium: { label: 'Medium', letter: 'M', winXp: 90 },

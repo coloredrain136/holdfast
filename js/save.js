@@ -6,13 +6,19 @@ export function freshSave() {
   return {
     schema: SAVE_SCHEMA, createdAt: Date.now(), updatedAt: Date.now(),
     xp: 0, skills: {}, maps: {}, stats: { runs: 0, wins: 0, kills: 0 },
-    settings: { sound: true }, run: null,
+    settings: { sound: true, speed: 1 }, run: null,
+    seen: { enemies: [] }, tutorialDone: false,
   };
 }
 
 // Add a function per schema bump: MIGRATIONS[n] upgrades a schema-n save to n+1.
 const MIGRATIONS = {
-  // 1: s => { s.newField = ...; return s; },
+  // schema 1 → 2 (holdfast-2): first-sighting enemy cards, saved speed, tutorial flag
+  1: s => {
+    // anything on maps already played counts as seen, so returning players don't get intro cards for goblins
+    const seen = new Set();
+    for (const m of MAPS) { const r = (s.maps || {})[m.id]; if (r && r.plays) { Object.keys(m.intro).forEach(k => seen.add(k)); if (m.boss && r.wins) seen.add('ogre'); } }
+    s.seen = { enemies: [...seen] }; s.settings = { ...(s.settings || {}), speed: 1 }; s.tutorialDone = Object.values(s.maps || {}).some(r => r.wins > 0); return s; },
 };
 
 export function migrate(s) {
@@ -25,6 +31,7 @@ export function migrate(s) {
   for (const k of Object.keys(d)) if (s[k] === undefined) s[k] = d[k];
   s.settings = { ...d.settings, ...s.settings };
   s.stats = { ...d.stats, ...s.stats };
+  s.seen = { ...d.seen, ...s.seen };
   for (const id of Object.keys(s.maps)) if (!MAPS.find(m => m.id === id)) delete s.maps[id];
   if (s.run && !MAPS.find(m => m.id === s.run.mapId)) s.run = null;
   return s;

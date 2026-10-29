@@ -1,5 +1,5 @@
 // Menu screens: Home, Campaign, Skills, Towers (codex), Settings, Results.
-import { MAPS, TOWERS, TOWER_ORDER, FUTURE_TOWERS, ENEMIES, ENEMY_ORDER, SKILLS, SKILL_BRANCH_ORDER, TIER_INFO, BIOMES, APP_VERSION } from './config.js';
+import { TUTORIAL_XP, MAPS, TOWERS, TOWER_ORDER, FUTURE_TOWERS, ENEMIES, ENEMY_ORDER, SKILLS, SKILL_BRANCH_ORDER, TIER_INFO, BIOMES, APP_VERSION } from './config.js';
 import { levelInfo, pointsAvailable, nodeState, skillRank, findNode, mapUnlocked, totalStars, towerUnlocked } from './progress.js';
 import { iconURL, drawWorldMap, WORLD_NODES, WORLD_BANDS } from './render.js';
 import { $, esc, ICON, toast, modal, bottomSheet, fmt } from './ui.js';
@@ -21,38 +21,50 @@ export function renderScreen(name, params) {
 }
 
 // ---------------- Home ----------------
+const DOCK_ICON = {
+  map: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>',
+  skills: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l2.5 5.2 5.5.8-4 3.9 1 5.6L12 15.8 7 18.5l1-5.6-4-3.9 5.5-.8z"/></svg>',
+  codex: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/></svg>',
+  settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1M18.7 18.7l-2.1-2.1M7.4 7.4L5.3 5.3"/></svg>',
+  cap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2.5 9 2.5 12 0v-5"/></svg>',
+};
+function nextPlayable() {
+  const s = app.save;
+  const i = MAPS.findIndex((m, i) => mapUnlocked(s, i) && !(s.maps[m.id] && s.maps[m.id].wins));
+  if (i >= 0) return MAPS[i];
+  let last = 0; MAPS.forEach((m, i) => { if (mapUnlocked(s, i)) last = i; }); return MAPS[last];
+}
 function home() {
   const s = app.save, lv = levelInfo(s.xp), pts = pointsAvailable(s), run = s.run;
   const runMap = run && MAPS.find(m => m.id === run.mapId);
-  const runCard = runMap ? `
-    <div class="card glass" style="margin-top:12px">
-      <div class="row"><div class="grow"><div class="label-s" style="margin:0 0 2px">Run in progress</div>
-        <div style="font-weight:800;font-size:17px">${esc(runMap.name)}</div>
-        <div class="muted" style="font-size:13px;margin-top:2px">${run.wave >= runMap.waves ? 'Boss wave' : `Wave ${run.wave + 1}/${runMap.waves}`} · ${ICON.heart.replace('class="ico"', 'class="ico" style="width:13px;height:13px;vertical-align:-2px"')} ${run.hearts} · ${ICON.coin.replace('class="ico"', 'class="ico" style="width:13px;height:13px;vertical-align:-2px"')} ${fmt(run.gold)}</div></div>
-      </div>
-      <div class="row" style="margin-top:10px"><button class="btn btn-gold grow" data-act="continue">Continue run</button><button class="btn" data-act="abandon">Abandon</button></div>
-    </div>` : '';
-  mount(`<div class="scr">
-    <div class="title"><h1>Holdfast</h1><div class="tag">Hold the line</div></div>
-    <div class="card glass lvl"><div class="badge"><small>LV</small><b>${lv.level}</b></div>
-      <div style="flex:1"><div class="row"><div class="grow" style="font-weight:800">Level ${lv.level}</div><div class="gold" style="font-weight:800;display:flex;align-items:center;gap:4px">${ICON.star(true, 16)} ${totalStars(s)}/${MAPS.length * 3}</div></div>
-      <div class="xpbar"><i style="width:${(100 * lv.into / lv.need).toFixed(1)}%"></i></div>
-      <div class="faint" style="font-size:12px;margin-top:4px">${fmt(lv.into)} / ${fmt(lv.need)} XP to level ${lv.level + 1}</div></div></div>
-    ${runCard}
-    <div style="flex:1;min-height:16px"></div>
-    <div class="menu">
-      <button class="btn wide ${runMap ? 'glass' : 'btn-gold'}" data-act="campaign"><span>Campaign</span><small>${Object.values(s.maps).filter(m => m.wins).length}/${MAPS.length} maps beaten</small></button>
-      <button class="btn glass" data-act="skills">Skills<small>Skill tree</small>${pts > 0 ? `<span class="dot">${pts}</span>` : ''}</button>
-      <button class="btn glass" data-act="towers">Codex<small>Towers & foes</small></button>
-      <button class="btn glass wide" data-act="settings" style="min-height:52px;font-size:16px">Settings</button>
+  const next = nextPlayable();
+  const playSub = runMap ? `${esc(runMap.name)} · ${run.wave >= runMap.waves ? 'Boss wave' : `Wave ${run.wave + 1}/${runMap.waves}`}` : `${esc(next.name)} · ${TIER_INFO[next.tier].label}`;
+  const fresh = !s.tutorialDone && !Object.keys(s.maps).length;
+  mount(`<div class="scr home">
+    <div class="home-top">
+      <button class="lvchip glass" data-act="skills"><div class="ring" style="--p:${(100 * lv.into / lv.need).toFixed(1)}%"><b>${lv.level}</b></div>
+        <div class="lv-txt"><div class="lv-l">Level ${lv.level}</div><div class="lv-x">${fmt(lv.into)} / ${fmt(lv.need)} XP</div></div></button>
+      <div class="pill glass gold">${ICON.star(true, 16)} ${totalStars(s)}/${MAPS.length * 3}</div>
+    </div>
+    <div class="logo"><h1>Holdfast</h1><div class="tag">Hold the line</div></div>
+    <div style="flex:1"></div>
+    ${!s.tutorialDone ? `<button class="tut-cta glass" data-act="tutorial">${DOCK_ICON.cap}<span>${fresh ? 'New here? Start with the tutorial' : 'Play the tutorial'}</span></button>` : ''}
+    <button class="play" data-act="play"><span class="pl-t">${runMap ? 'Continue' : 'Play'}</span><span class="pl-s">${playSub}</span></button>
+    ${runMap ? `<button class="abandon" data-act="abandon">Abandon saved run</button>` : ''}
+    <div class="dock">
+      <button class="dock-btn" data-act="campaign"><span class="di glass">${DOCK_ICON.map}</span><span>Campaign</span></button>
+      <button class="dock-btn" data-act="skills"><span class="di glass">${DOCK_ICON.skills}${pts > 0 ? `<span class="dot">${pts}</span>` : ''}</span><span>Skills</span></button>
+      <button class="dock-btn" data-act="towers"><span class="di glass">${DOCK_ICON.codex}</span><span>Codex</span></button>
+      <button class="dock-btn" data-act="settings"><span class="di glass">${DOCK_ICON.settings}</span><span>Settings</span></button>
     </div></div>`, a => {
-    if (a === 'continue') act.startMap(run.mapId, { resume: true });
+    if (a === 'play') runMap ? act.startMap(run.mapId, { resume: true }) : act.startMap(next.id);
+    if (a === 'tutorial') act.startTutorial();
     if (a === 'abandon') modal({ title: 'Abandon this run?', text: `Your saved run on ${runMap.name} will be deleted. No XP is awarded.`, actions: [{ label: 'Abandon run', cls: 'btn-red', onClick: () => { s.run = null; act.save.write(); home(); } }, { label: 'Keep it' }] });
     if (a === 'campaign') act.showScreen('campaign');
     if (a === 'skills') act.showScreen('skills');
     if (a === 'towers') act.showScreen('towers');
     if (a === 'settings') act.showScreen('settings');
-  });
+  }, false);
 }
 
 // ---------------- Campaign ----------------
@@ -69,8 +81,10 @@ function campaign() {
   }).join('');
   const tags = WORLD_BANDS.map(b => `<div class="biome-tag" style="top:calc(${b.y0 * 100}% + 10px)">${BIOMES[b.biome].name}</div>`).join('');
   mount(`<div class="scr">${topbar('Campaign', `<div class="pill glass gold">${ICON.star(true, 16)} ${totalStars(s)}</div>`)}
+    <button class="tut-banner glass" data-act="tutorial">${DOCK_ICON.cap}<div style="flex:1;text-align:left"><b>Training Grounds</b><div class="muted" style="font-size:12.5px">${s.tutorialDone ? 'Replay the guided tutorial' : `Guided tutorial · +${TUTORIAL_XP} XP`}</div></div><span class="chip">${s.tutorialDone ? 'Done' : 'Play'}</span></button>
     <div class="world" id="world"><canvas id="worldcv"></canvas>${tags}${nodes}</div></div>`, (a, d) => {
     if (a === 'back') act.showScreen('home');
+    if (a === 'tutorial') act.startTutorial();
     if (a === 'node') mapSheet(+d.i);
   });
   requestAnimationFrame(() => {
@@ -248,7 +262,8 @@ async function doExport() {
 // ---------------- Results ----------------
 function results() {
   const r = app.lastResult; if (!r) return home();
-  const m = MAPS.find(x => x.id === r.mapId);
+  const m = r.map || MAPS.find(x => x.id === r.mapId);
+  if (r.tutorial) return tutorialResults(r);
   const pts = pointsAvailable(app.save);
   const lines = [['Waves cleared', r.xp.waves], ['Kills', r.xp.kills], r.won ? ['Victory bonus', r.xp.win] : null, r.xp.newStars ? [`New stars (${r.xp.newStars})`, r.xp.stars] : null].filter(Boolean);
   mount(`<div class="scr"><div class="results ${r.won ? 'win' : 'lose'}">
@@ -291,4 +306,19 @@ function results() {
     } else { bar.style.width = (100 * r.after.into / r.after.need).toFixed(1) + '%'; finish(); }
   };
   setTimeout(tick, 400 + r.stars * 300);
+}
+
+function tutorialResults(r) {
+  mount(`<div class="scr"><div class="results ${r.won ? 'win' : 'lose'}">
+    <h1>${r.won ? 'Training complete!' : 'The castle fell'}</h1>
+    <div class="muted" style="margin-top:6px">${r.won ? 'You know the basics. The campaign starts at Greenvale Road.' : 'No worries — try again, the tutorial will guide you.'}</div>
+    ${r.xp.total ? `<div class="card glass" style="margin-top:16px"><div class="row"><div class="grow muted">Tutorial reward</div><b class="gold">+${r.xp.total} XP</b></div>${r.after.level > r.before.level ? `<div class="lvlup" style="margin-top:6px">Level up! You're level ${r.after.level}</div>` : ''}</div>` : ''}
+    <div class="stack" style="margin-top:18px">
+      ${r.won ? `<button class="btn btn-gold btn-block" data-act="campaign-start">Start the campaign</button>` : `<button class="btn btn-gold btn-block" data-act="retry">Try again</button>`}
+      <button class="btn glass btn-block" data-act="home">Home</button>
+    </div></div></div>`, a => {
+    if (a === 'campaign-start') act.startMap(MAPS[0].id);
+    if (a === 'retry') act.startTutorial();
+    if (a === 'home') act.showScreen('home');
+  });
 }

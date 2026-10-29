@@ -43,6 +43,7 @@ export class Path {
 
 // ---------- waves ----------
 export function generateWaves(map) {
+  if (map.waveList) return map.waveList.map((groups, i) => ({ n: i + 1, hpMult: map.hpMult || 1, groups: groups.map(g => ({ ...g })) }));
   const T = WAVE_TUNING, rng = mulberry32(hashStr(map.id + ':waves'));
   const waves = [];
   for (let w = 1; w <= map.waves; w++) {
@@ -128,7 +129,7 @@ export class Game {
     this.nextWaveIn = 0;         // countdown (s) once current wave finished spawning
     this.spawnQueue = [];        // [{at, type, hp}]
     this.enemies = []; this.towers = []; this.projectiles = []; this.events = [];
-    this.leaks = 0;
+    this.leaks = 0; this.seenTypes = new Set();
     if (snapshot) this._restore(snapshot);
   }
 
@@ -148,7 +149,7 @@ export class Game {
     return null; // tier 3 → choose a branch
   }
   branchCost(t, key) { return TOWERS[t.type].branches[key].cost; }
-  sellValue(t) { return Math.floor(t.spent * this.mods.sellRefund); }
+  sellValue(t) { return this.state === 'ready' ? t.spent : Math.floor(t.spent * this.mods.sellRefund); }
   towerAtSpot(i) { return this.towers.find(t => t.spot === i) || null; }
 
   // ----- actions -----
@@ -190,13 +191,20 @@ export class Game {
     this.gold += v; this.events.push({ t: 'sell', x: t.x, y: t.y, gold: v }); return v;
   }
   setTargeting(t, mode) { if (TARGET_MODES.includes(mode)) t.targeting = mode; }
+  // Barracks: move rally point to the road point nearest (x,y). Must be in range. Returns true if moved.
+  setRally(t, x, y) {
+    if (t.type !== 'barracks') return false;
+    const n = this.path.nearest(x, y);
+    if (n.dist > 40 || Math.hypot(n.x - t.x, n.y - t.y) > t.stats.range) return false;
+    t.rallyPick = { x: n.x, y: n.y }; this._setupSoldiers(t, true); return true;
+  }
 
   // ----- snapshot (taken at wave start, before spawning) -----
   snapshot() {
     return {
       v: 1, mapId: this.map.id, wave: this.waveIdx, gold: this.gold, hearts: this.hearts, startHearts: this.startHearts,
       kills: this.kills, leaks: this.leaks,
-      towers: this.towers.map(t => ({ spot: t.spot, type: t.type, tier: t.tier, branch: t.branch, targeting: t.targeting, spent: t.spent })),
+      towers: this.towers.map(t => ({ spot: t.spot, type: t.type, tier: t.tier, branch: t.branch, targeting: t.targeting, spent: t.spent, rally: t.rallyPick || null })),
       enemies: this.enemies.filter(e => e.alive).map(e => ({ type: e.type, hp: Math.round(e.hp), maxHp: Math.round(e.maxHp), dist: Math.round(e.dist), off: e.off })),
       savedAt: Date.now(),
     };
@@ -207,13 +215,13 @@ export class Game {
     for (const o of s.towers || []) {
       if (!TOWERS[o.type] || !this.map.spots[o.spot]) continue;
       const [x, y] = this.map.spots[o.spot];
-      const t = { id: _id++, type: o.type, spot: o.spot, x, y, tier: o.tier, branch: o.branch, targeting: o.targeting || 'first', spent: o.spent, cd: 0.3, angle: -Math.PI / 2, anim: 0, soldiers: [] };
+      const t = { id: _id++, type: o.type, spot: o.spot, x, y, tier: o.tier, branch: o.branch, targeting: o.targeting || 'first', spent: o.spent, cd: 0.3, angle: -Math.PI / 2, anim: 1, soldiers: [], rallyPick: o.rally || null };
       this._refresh(t); this.towers.push(t);
     }
     for (const o of s.enemies || []) {
       if (!ENEMIES[o.type]) continue;
       const e = this._makeEnemy(o.type, 1, o.maxHp); e.hp = o.hp; e.dist = o.dist; e.off = o.off ?? e.off;
-      this._place(e); this.enemies.push(e);
+      this._place(e); e.px = e.x; e.py = e.y; this.enemies.push(e);
     }
     this.waveIdx = s.wave;
     this.state = 'ready';
@@ -250,17 +258,17 @@ export class Game {
     const p = this.path.at(e.dist);
     e.x = p.x + Math.cos(p.a + Math.PI / 2) * e.off; e.y = p.y + Math.sin(p.a + Math.PI / 2) * e.off; e.a = p.a;
   }
-  _setupSoldiers(t) {
+  _setupSoldiers(t, keepHp = false) {
     const s = t.stats, old = t.soldiers || [];
     const near = this.path.nearest(t.x, t.y);
-    t.rally = { x: near.x, y: near.y };
+    t.rally = t.rallyPick ? { ...t.rallyPick } : { x: near.x, y: near.y };
     const offs = [[0, -12], [-12, 9], [12, 9]];
     t.soldiers = [];
     for (let i = 0; i < s.soldiers; i++) {
       const prev = old[i];
       const hx = t.rally.x + offs[i][0], hy = t.rally.y + offs[i][1];
       t.soldiers.push({ id: _id++, i, x: prev && !prev.dead ? prev.x : t.x, y: prev && !prev.dead ? prev.y : t.y, hx, hy,
-        hp: s.hp, maxHp: s.hp, dead: false, respawn: 0, target: null, atkCd: 0.5, bowCd: 0.5, anim: 0 });
+        hp: keepHp && prev ? Math.min(s.hp, prev.hp) : s.hp, maxHp: s.hp, dead: keepHp && prev ? prev.dead : false, respawn: keepHp && prev ? prev.respawn : 0, target: null, atkCd: 0.5, bowCd: 0.5, anim: 0 });
       if (prev && prev.target && prev.target.blockedBy === prev) prev.target.blockedBy = null;
     }
   }
@@ -281,7 +289,7 @@ export class Game {
     if (e.blockedBy) { e.blockedBy.target = null; e.blockedBy = null; }
     const g = Math.round(e.def.gold * this.mods.killGoldMult);
     this.gold += g; this.kills++;
-    this.events.push({ t: 'death', x: e.x, y: e.y, type: e.type, gold: g, flying: e.flying, boss: e.boss });
+    this.events.push({ t: 'death', x: e.x, y: e.y, a: e.a, type: e.type, gold: g, flying: e.flying, boss: e.boss, face: e.face });
   }
   _targets(t, range, air, from = t) {
     const r2 = range * range, out = [];
@@ -315,10 +323,14 @@ export class Game {
   step(dt = TICK) {
     if (this.state !== 'running') return;
     this.time += dt;
+    for (const e of this.enemies) { e.px = e.x; e.py = e.y; }
+    for (const p of this.projectiles) { p.px = p.x; p.py = p.y; p.ph = p.h; }
+    for (const t of this.towers) if (t.soldiers) for (const so of t.soldiers) { so.px = so.x; so.py = so.y; }
     // spawns
     while (this.spawnQueue.length && this.spawnQueue[0].at <= this.time) {
       const q = this.spawnQueue.shift();
-      const e = this._makeEnemy(q.type, q.hpMult, q.hp); this._place(e); this.enemies.push(e);
+      const e = this._makeEnemy(q.type, q.hpMult, q.hp); this._place(e); e.px = e.x; e.py = e.y; this.enemies.push(e);
+      if (!this.seenTypes.has(e.type)) { this.seenTypes.add(e.type); this.events.push({ t: 'firstSpawn', type: e.type }); }
       if (e.boss) this.events.push({ t: 'boss', x: e.x, y: e.y });
     }
     if (!this.spawnQueue.length && this.nextWaveIn <= 0 && this.waveIdx < this.totalWaves && !this._breakStarted) {
@@ -375,7 +387,7 @@ export class Game {
         e.alive = false;
         const cost = e.boss ? Math.max(1, e.def.hearts - this.mods.bossHeartReduce) : e.def.hearts;
         this.hearts -= cost; this.leaks += cost;
-        this.events.push({ t: 'leak', hearts: cost, boss: e.boss });
+        this.events.push({ t: 'leak', hearts: cost, boss: e.boss, x: e.x, y: e.y });
         continue;
       }
       this._place(e);
@@ -450,7 +462,7 @@ export class Game {
         const p = this._predict(target, flight);
         const r = this._rollDmg(s, s.dmg);
         this.projectiles.push({ kind: 'shell', x: t.x, y: t.y - 14, sx: t.x, sy: t.y - 14, tx: p.x, ty: p.y, t: 0, dur: flight, dmg: r.dmg, splash: s.splash, burn: s.burn, burnDur: s.burnDur, big: s.splash > 60 });
-        this.events.push({ t: 'shoot', kind: 'cannon', x: t.x, y: t.y });
+        this.events.push({ t: 'shoot', kind: 'cannon', x: t.x, y: t.y, mx: s.splash > 60 ? t.x : t.x + Math.cos(t.angle) * 22, my: s.splash > 60 ? t.y - 30 : t.y - 10 + Math.sin(t.angle) * 22 });
         break;
       }
       case 'frost': {
