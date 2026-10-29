@@ -1,9 +1,9 @@
 // Holdfast service worker — network-first so new versions always arrive; cache is the offline fallback.
-const VERSION = 'holdfast-1';
+const VERSION = 'holdfast-2';
 const CACHE = 'holdfast-cache-' + VERSION;
 const CORE = [
   './', 'index.html', 'manifest.webmanifest', 'version.json',
-  'js/main.js', 'js/config.js', 'js/engine.js', 'js/render.js', 'js/screens.js', 'js/ui.js', 'js/save.js', 'js/progress.js', 'js/audio.js',
+  'js/main.js', 'js/config.js', 'js/engine.js', 'js/render.js', 'js/screens.js', 'js/ui.js', 'js/save.js', 'js/progress.js', 'js/audio.js', 'js/tutorial.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];
 self.addEventListener('install', e => {
