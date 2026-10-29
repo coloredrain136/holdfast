@@ -30,7 +30,28 @@ app.renderer = renderer;
 const probe = document.createElement('div');
 probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0';
 document.body.appendChild(probe);
-function safe() { const cs = getComputedStyle(probe); return { t: parseFloat(cs.paddingTop) || 0, b: parseFloat(cs.paddingBottom) || 0 }; }
+const VP = { gap: 0, topClear: 0 };
+function safe() { const cs = getComputedStyle(probe); return { t: (parseFloat(cs.paddingTop) || 0) + VP.topClear, b: parseFloat(cs.paddingBottom) || 0 }; }
+// iOS home-screen apps: the layout viewport can stop ~50pt short of the real screen bottom (a WebKit bug),
+// leaving a dead strip. Measure the gap against the physical screen and stretch fixed layers into it.
+// iOS 27 also blurs the top edge of apps, so keep the HUD below it.
+function measureViewport() {
+  const root = document.documentElement.style;
+  const rawTop = parseFloat(getComputedStyle(probe).paddingTop) || 0;
+  VP.topClear = rawTop > 20 ? 26 : 0;
+  const standalone = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  let gap = 0;
+  if (standalone) {
+    const layoutH = $('vpprobe').getBoundingClientRect().height || window.innerHeight;
+    const portrait = window.innerHeight >= window.innerWidth;
+    const full = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+    const g = Math.round(full - layoutH);
+    if (g > 2 && g < 140) gap = g;
+  }
+  VP.gap = gap;
+  root.setProperty('--vgap', gap + 'px'); root.setProperty('--top-clear', VP.topClear + 'px');
+}
+app.vp = VP;
 function viewport() {
   const r = cv.getBoundingClientRect();
   return { W: Math.round(r.width) || window.innerWidth, H: Math.round(r.height) || window.innerHeight };
@@ -44,8 +65,9 @@ function homeRect() { const { W, H } = viewport(); return { x: 0, y: 0, w: W, h:
 app.gameRect = gameRect;
 let menuDirty = true, lastLayoutKey = '';
 function layout(force = false) {
+  measureViewport();
   const { W, H } = viewport(), s = safe();
-  const key = [W, H, s.t, s.b, app.screen === 'game' ? 'g' : 'm', window.devicePixelRatio].join(',');
+  const key = [W, H, s.t, s.b, VP.gap, app.screen === 'game' ? 'g' : 'm', window.devicePixelRatio].join(',');
   if (!force && key === lastLayoutKey) return;
   lastLayoutKey = key;
   renderer.resize(W, H, app.screen === 'game' ? gameRect() : homeRect());
@@ -436,7 +458,7 @@ function renderSheet() {
       <button class="btn ${armed ? 'btn-red' : ''}" data-act="sell" style="min-height:40px">${armed ? 'Tap to confirm' : `Sell · +${g.sellValue(t)}`}</button></div>`;
   const sp = renderer.toScreen(t.x, t.y);
   el.style.top = ''; el.style.bottom = '';
-  if (sp.y > window.innerHeight * 0.52) { el.style.top = `calc(${safe().t + 58}px)`; el.style.bottom = 'auto'; }
+  if (sp.y > viewport().H * 0.52) { el.style.top = `calc(${safe().t + 58}px)`; el.style.bottom = 'auto'; }
   el.classList.toggle('rally-mode', !!app.ui.rallyMode);
   el.classList.remove('hidden');
 }

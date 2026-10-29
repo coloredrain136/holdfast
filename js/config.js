@@ -1,5 +1,5 @@
 // Holdfast — data tables. Balance lives here: edit numbers, not code.
-export const APP_VERSION = 'holdfast-2';
+export const APP_VERSION = 'holdfast-3';
 export const SAVE_KEY = 'holdfast_save';
 export const SAVE_SCHEMA = 2;
 

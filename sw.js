@@ -1,5 +1,5 @@
 // Holdfast service worker — network-first so new versions always arrive; cache is the offline fallback.
-const VERSION = 'holdfast-2';
+const VERSION = 'holdfast-3';
 const CACHE = 'holdfast-cache-' + VERSION;
 const CORE = [
   './', 'index.html', 'manifest.webmanifest', 'version.json',
